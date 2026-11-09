@@ -1,3 +1,4 @@
+#include "CustomTileStore.h"
 #include <CTileSetBrowserView.h>
 #include <Helpers/Macro.h>
 #include <CPalette.h>
@@ -1360,6 +1361,13 @@ DEFINE_HOOK(4F128A, CTileSetBrowserView_Update_AddCustomTiles, 5)
             SendMessage(hTileComboBox, CB_SETITEMDATA, count, set);
             count++;
         }
+    }
+
+    // custom tiles stored inside the map itself
+    if (CustomTileStore::LoadFromMap())
+    {
+        GET(CTileSetBrowserFrame*, pMapFrame, ESI);
+        CustomTileStore::EnsureComboEntry(GetDlgItem(pMapFrame->GetSafeHwnd(), 1366));
     }
 
     return 0;

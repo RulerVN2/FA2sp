@@ -9,6 +9,7 @@
 #include "../CMapData/HeightGenerator.h"
 #include "../CFinalSunApp/Body.h"
 #include "../CTileSetBrowserView/Body.h"
+#include "../CTileSetBrowserView/CustomTileStore.h"
 #include <CMapData.h>
 #include <CLoading.h>
 #include <CInputMessageBox.h>
@@ -591,6 +592,9 @@ BOOL CFinalSunDlgExt::OnCommandExt(WPARAM wParam, LPARAM lParam)
 		SetMenuStatusTrue(34006, CIsoViewExt::PasteAircrafts);
 		SetMenuStatusTrue(34007, CIsoViewExt::PasteTerrains);
 		SetMenuStatusTrue(34008, CIsoViewExt::PasteSmudges);
+		return TRUE;
+	case 34054:
+		CustomTileStore::SaveClipboardAsTile();
 		return TRUE;
 	case 34053:
 		SetMenuStatusTrue(34001, CIsoViewExt::PasteGround);

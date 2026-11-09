@@ -339,6 +339,7 @@
     <ClCompile Include="FA2sp\Ext\CTileSetBrowserFrame\TabPages\TriggerSort.cpp" />
     <ClCompile Include="FA2sp\Ext\CTileSetBrowserFrame\TabPages\WaypointSort.cpp" />
     <ClCompile Include="FA2sp\Ext\CTileSetBrowserView\Hooks.cpp" />
+    <ClCompile Include="FA2sp\Ext\CTileSetBrowserView\CustomTileStore.cpp" />
     <ClCompile Include="FA2sp\Ext\FA2Expand.cpp" />
     <ClCompile Include="FA2sp\Helpers\FString.cpp" />
     <ClCompile Include="FA2sp\Helpers\InstructionSet.cpp" />
@@ -459,6 +460,7 @@
     <ClInclude Include="FA2sp\Ext\CMapData\HeightGenerator.h" />
     <ClInclude Include="FA2sp\Ext\CMapD\Body.h" />
     <ClInclude Include="FA2sp\Ext\CTileSetBrowserView\Body.h" />
+    <ClInclude Include="FA2sp\Ext\CTileSetBrowserView\CustomTileStore.h" />
     <ClInclude Include="glad\include\glad\glad.h" />
     <ClInclude Include="FA2sp\Ext\CIsoView\RendererTypes.h" />
     <ClInclude Include="FA2sp\Ext\CLighting\Body.h" />

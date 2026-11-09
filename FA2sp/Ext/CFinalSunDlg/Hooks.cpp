@@ -305,6 +305,7 @@ DEFINE_HOOK(43209D, CFinalSunDlg_Update_TranslateMenuItems, A)
     translateMenuItem(34053, "Menu.Paste.Reset");
     translateMenuItem(34051, "Menu.Paste.Overriding");
     translateMenuItem(34052, "Menu.Paste.ShowOutline");
+    translateMenuItem(34054, "Menu.Paste.SaveAsCustomTile");
 
 
     if (!ExtConfigs::InGameDisplay_Shadow) {

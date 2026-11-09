@@ -181,6 +181,8 @@ POPUP "Paste Options"
 	MENUITEM "Paste Smudges", 34008
 	MENUITEM SEPARATOR
 	MENUITEM "Show Outline",  34052
+	MENUITEM SEPARATOR
+	MENUITEM "Save Clipboard as Custom Tile", 34054
 }
 POPUP "Online"
 {
