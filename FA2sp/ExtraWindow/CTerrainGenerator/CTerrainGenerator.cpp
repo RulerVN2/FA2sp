@@ -1,4 +1,5 @@
 ﻿#include "CTerrainGenerator.h"
+#include "CTilePicker.h"
 #include "../../FA2sp.h"
 #include <Miscs/Miscs.h>
 #include "../CObjectSearch/CObjectSearch.h"
@@ -647,6 +648,14 @@ BOOL CALLBACK CTerrainGenerator::DlgProcTab1(HWND hWnd, UINT Msg, WPARAM wParam,
                 OnSelchangeTileSet(4);
             else if (CODE == CBN_EDITCHANGE)
                 OnSelchangeTileSet(4, true);
+            break;
+        case Controls::TilePick1:
+        case Controls::TilePick2:
+        case Controls::TilePick3:
+        case Controls::TilePick4:
+        case Controls::TilePick5:
+            if (CODE == BN_CLICKED)
+                OnClickPickTiles(ID - Controls::TilePick1);
             break;
         case Controls::TileChance1:
             if (CODE == EN_CHANGE && CurrentPreset && !ProgrammaticallySettingText)
@@ -1538,6 +1547,45 @@ void CTerrainGenerator::OnSelchangeTileSet(int index, bool edited)
         }
         SaveAndReloadPreset();
     }
+}
+
+void CTerrainGenerator::OnClickPickTiles(int index)
+{
+    if (index < 0 || TERRAIN_GENERATOR_DISPLAY <= index || !CurrentPreset)
+        return;
+    if (index >= static_cast<int>(CurrentPreset->TileSets.size()))
+        return; // no tile set chosen in this row yet
+    if (CurrentPreset->TileSets[index].Items.empty())
+        return;
+
+    const int tileSet = atoi(CurrentPreset->TileSets[index].Items[0]);
+
+    // Start from whatever is already typed in the Tile Indexes box.
+    char buffer[512]{ 0 };
+    GetWindowText(hTileIndexes[index], buffer, 511);
+    std::vector<int> selected;
+    for (auto& atom : FString::SplitString(FString(buffer)))
+    {
+        FString item = atom;
+        item.Trim();
+        if (!item.empty())
+            selected.push_back(atoi(item));
+    }
+
+    if (!CTilePicker::Pick(m_hwnd, tileSet, selected))
+        return;
+
+    FString result;
+    for (size_t i = 0; i < selected.size(); ++i)
+    {
+        if (i > 0)
+            result += ",";
+        result += std::to_string(selected[i]);
+    }
+
+    // Writing the text fires the same change handler as typing it by hand,
+    // which stores the preset and reloads it.
+    SetWindowText(hTileIndexes[index], result.c_str());
 }
 
 void CTerrainGenerator::OnEditchangeTerrain(int index)

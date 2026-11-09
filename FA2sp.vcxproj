@@ -245,6 +245,7 @@
     <ClCompile Include="FA2sp\ExtraWindow\CTechnoDialog\CTechnoDialog.cpp" />
     <ClCompile Include="FA2sp\ExtraWindow\CTriggerAnnotation\CTriggerAnnotation.cpp" />
     <ClCompile Include="FA2sp\ExtraWindow\CTerrainGenerator\CTerrainGenerator.cpp" />
+    <ClCompile Include="FA2sp\ExtraWindow\CTerrainGenerator\CTilePicker.cpp" />
     <ClCompile Include="FA2sp\ExtraWindow\CNewPropertyAircraft\CNewPropertyAircraft.cpp" />
     <ClCompile Include="FA2sp\ExtraWindow\CNewPropertyBuilding\CNewPropertyBuilding.cpp" />
     <ClCompile Include="FA2sp\ExtraWindow\CNewPropertyInfantry\CNewPropertyInfantry.cpp" />
@@ -440,6 +441,7 @@
     <ClInclude Include="FA2sp\ExtraWindow\CTechnoDialog\CTechnoDialog.h" />
     <ClInclude Include="FA2sp\ExtraWindow\CTriggerAnnotation\CTriggerAnnotation.h" />
     <ClInclude Include="FA2sp\ExtraWindow\CTerrainGenerator\CTerrainGenerator.h" />
+    <ClInclude Include="FA2sp\ExtraWindow\CTerrainGenerator\CTilePicker.h" />
     <ClInclude Include="FA2sp\ExtraWindow\CNewPropertyAircraft\CNewPropertyAircraft.h" />
     <ClInclude Include="FA2sp\ExtraWindow\CNewPropertyBuilding\CNewPropertyBuilding.h" />
     <ClInclude Include="FA2sp\ExtraWindow\CNewPropertyInfantry\CNewPropertyInfantry.h" />

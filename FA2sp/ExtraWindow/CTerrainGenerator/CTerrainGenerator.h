@@ -252,6 +252,11 @@ public:
         TileIndexes3 = 2015,
         TileIndexes4 = 2021,
         TileIndexes5 = 2027,
+        TilePick1 = 2030,
+        TilePick2 = 2031,
+        TilePick3 = 2032,
+        TilePick4 = 2033,
+        TilePick5 = 2034,
         TileChance1 = 2005,
         TileChance2 = 2011,
         TileChance3 = 2017,
@@ -370,6 +375,7 @@ protected:
 
     static void OnSelchangePreset(bool edited = false, bool reload = true);
     static void OnSelchangeTileSet(int index, bool edited = false);
+    static void OnClickPickTiles(int index);
     static void OnEditchangeTerrain(int index);
     static void OnEditchangeSmudge(int index);
     static void OnEditchangeOverlay(int index);
