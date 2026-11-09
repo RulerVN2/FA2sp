@@ -282,6 +282,11 @@ public:
         TerrainGroup3 = 3009,
         TerrainGroup4 = 3013,
         TerrainGroup5 = 3017,
+        TerrainPick1 = 3030,
+        TerrainPick2 = 3031,
+        TerrainPick3 = 3032,
+        TerrainPick4 = 3033,
+        TerrainPick5 = 3034,
         TerrainChance1 = 3003,
         TerrainChance2 = 3007,
         TerrainChance3 = 3011,
@@ -376,6 +381,7 @@ protected:
     static void OnSelchangePreset(bool edited = false, bool reload = true);
     static void OnSelchangeTileSet(int index, bool edited = false);
     static void OnClickPickTiles(int index);
+    static void OnClickPickTerrain(int index);
     static void OnEditchangeTerrain(int index);
     static void OnEditchangeSmudge(int index);
     static void OnEditchangeOverlay(int index);
@@ -431,6 +437,8 @@ private:
     static HWND hScale;
     static HWND hTileSet[TERRAIN_GENERATOR_DISPLAY];
     static HWND hTileIndexes[TERRAIN_GENERATOR_DISPLAY];
+    static HWND hTilePick[TERRAIN_GENERATOR_DISPLAY];
+    static HWND hTerrainPick[TERRAIN_GENERATOR_DISPLAY];
     static HWND hTileChance[TERRAIN_GENERATOR_DISPLAY];
     static HWND hOverlay[TERRAIN_GENERATOR_DISPLAY];
     static HWND hOverlayData[TERRAIN_GENERATOR_DISPLAY];

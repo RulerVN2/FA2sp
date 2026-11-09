@@ -1,14 +1,20 @@
 #include "CTilePicker.h"
 
+#include "../../FA2sp.h"
 #include "../../Ext/CMapData/Body.h"
+#include "../../Ext/CLoading/Body.h"
 #include "../../Ext/CTileSetBrowserView/Body.h"
 #include "../../Ext/CFinalSunApp/Body.h"
+#include "../../Ext/CFinalSunDlg/Body.h"
+#include "../../Helpers/Helper.h"
 #include "../../Helpers/Translations.h"
 #include "../../Helpers/FString.h"
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <set>
+#include <string>
 #include <vector>
 
 namespace
@@ -24,7 +30,7 @@ namespace
 
     struct Cell
     {
-        int Index = 0;        // index inside the tile set
+        std::string Key;      // tile index inside the tile set, or the terrain object ID
         HBITMAP Bitmap = nullptr;
         int Width = 0;
         int Height = 0;
@@ -40,7 +46,7 @@ namespace
         HWND hNone = nullptr;
 
         std::vector<Cell> Cells;
-        std::set<int> Selected;
+        std::set<std::string> Selected;
 
         int CellW = 0;
         int CellH = 0;
@@ -51,6 +57,7 @@ namespace
         int ContentH = 0;
         int LastClicked = -1;
 
+        std::string Title;
         float Scale = 1.0f;
         bool Done = false;
         bool Accepted = false;
@@ -135,9 +142,8 @@ namespace
     {
         if (!g_State || !g_State->hWnd)
             return;
-        FString title = Translations::TranslateOrDefault("CTerrainGenerator.PickTilesTitle", "Pick tiles");
         char buffer[512];
-        sprintf_s(buffer, "%s  (%d / %d)", title.c_str(),
+        sprintf_s(buffer, "%s  (%d / %d)", g_State->Title.c_str(),
             static_cast<int>(g_State->Selected.size()),
             static_cast<int>(g_State->Cells.size()));
         SetWindowTextA(g_State->hWnd, buffer);
@@ -219,7 +225,7 @@ namespace
                 continue;
 
             const Cell& cell = st.Cells[i];
-            const bool selected = st.Selected.count(cell.Index) > 0;
+            const bool selected = st.Selected.count(cell.Key) > 0;
 
             RECT rcCell = { x, y, x + st.CellW - S(2), y + st.CellH - S(2) };
             if (selected)
@@ -255,11 +261,10 @@ namespace
                 SelectObject(hBitmapDC, hOldBitmap);
             }
 
-            char label[32];
-            sprintf_s(label, "%d", cell.Index);
             RECT rcLabel = { rcCell.left, rcCell.bottom - st.LabelH, rcCell.right, rcCell.bottom };
             SetTextColor(hMem, selected ? RGB(0, 50, 140) : GetSysColor(COLOR_WINDOWTEXT));
-            DrawTextA(hMem, label, -1, &rcLabel, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+            DrawTextA(hMem, cell.Key.c_str(), -1, &rcLabel,
+                DT_SINGLELINE | DT_CENTER | DT_VCENTER | DT_END_ELLIPSIS);
         }
 
         DeleteDC(hBitmapDC);
@@ -305,15 +310,15 @@ namespace
             const int from = std::min(st.LastClicked, idx);
             const int to = std::max(st.LastClicked, idx);
             for (int i = from; i <= to; ++i)
-                st.Selected.insert(st.Cells[i].Index);
+                st.Selected.insert(st.Cells[i].Key);
         }
         else
         {
-            const int tileIndex = st.Cells[idx].Index;
-            if (st.Selected.count(tileIndex))
-                st.Selected.erase(tileIndex);
+            const std::string& key = st.Cells[idx].Key;
+            if (st.Selected.count(key))
+                st.Selected.erase(key);
             else
-                st.Selected.insert(tileIndex);
+                st.Selected.insert(key);
         }
         st.LastClicked = idx;
         InvalidateRect(st.hGrid, nullptr, FALSE);
@@ -444,7 +449,7 @@ namespace
                 return 0;
             case ID_SELECT_ALL:
                 for (const auto& cell : st.Cells)
-                    st.Selected.insert(cell.Index);
+                    st.Selected.insert(cell.Key);
                 InvalidateRect(st.hGrid, nullptr, FALSE);
                 UpdateTitle();
                 return 0;
@@ -493,71 +498,44 @@ namespace
     }
 }
 
-bool CTilePicker::Pick(HWND hOwner, int tileSet, std::vector<int>& selected)
+namespace
 {
-    if (g_State)
-        return false; // already open
-
-    int start = 0;
-    int count = 0;
-    if (!GetTileRange(tileSet, start, count))
-        return false;
-
-    RegisterClasses();
-
-    PickerState state;
-    g_State = &state;
-
-    state.Scale = CFinalSunAppExt::ProgramScaleFactor;
-    if (state.Scale < 1.0f)
-        state.Scale = 1.0f;
-
-    for (int idx : selected)
+    // Shows the window for a state whose Cells (and Selected) are already filled in.
+    // Returns true if the user pressed OK; state.Selected then holds the choice.
+    bool RunPicker(HWND hOwner, PickerState& state)
     {
-        if (idx >= 0 && idx < count)
-            state.Selected.insert(idx);
-    }
+        int maxW = 0;
+        int maxH = 0;
+        for (const auto& cell : state.Cells)
+        {
+            maxW = std::max(maxW, cell.Width);
+            maxH = std::max(maxH, cell.Height);
+        }
 
-    // Capture every tile of the tile set as a bitmap.
-    int maxW = 0;
-    int maxH = 0;
-    state.Cells.reserve(count);
-    for (int i = 0; i < count; ++i)
-    {
-        Cell cell;
-        cell.Index = i;
-        cell.Bitmap = CaptureTile(start + i, cell.Width, cell.Height);
-        maxW = std::max(maxW, cell.Width);
-        maxH = std::max(maxH, cell.Height);
-        state.Cells.push_back(cell);
-    }
+        state.Margin = S(6);
+        state.LabelH = S(16);
+        state.CellW = std::clamp(maxW, S(60), S(170)) + S(10);
+        state.CellH = std::clamp(maxH, S(30), S(130)) + S(10) + state.LabelH;
 
-    state.Margin = S(6);
-    state.LabelH = S(16);
-    state.CellW = std::clamp(maxW, S(60), S(170)) + S(10);
-    state.CellH = std::clamp(maxH, S(30), S(130)) + S(10) + state.LabelH;
+        // Place the window over the owner (or the screen) and keep it inside the work area.
+        RECT work = {};
+        SystemParametersInfoA(SPI_GETWORKAREA, 0, &work, 0);
+        RECT ownerRect = work;
+        if (hOwner)
+            GetWindowRect(hOwner, &ownerRect);
+        const int winW = std::min(S(820), static_cast<int>(work.right - work.left));
+        const int winH = std::min(S(600), static_cast<int>(work.bottom - work.top));
+        int winX = (ownerRect.left + ownerRect.right - winW) / 2;
+        int winY = (ownerRect.top + ownerRect.bottom - winH) / 2;
+        winX = std::clamp(winX, static_cast<int>(work.left), std::max(static_cast<int>(work.left), static_cast<int>(work.right) - winW));
+        winY = std::clamp(winY, static_cast<int>(work.top), std::max(static_cast<int>(work.top), static_cast<int>(work.bottom) - winH));
 
-    // Place the window over the owner (or the screen) and keep it inside the work area.
-    RECT work = {};
-    SystemParametersInfoA(SPI_GETWORKAREA, 0, &work, 0);
-    RECT ownerRect = work;
-    if (hOwner)
-        GetWindowRect(hOwner, &ownerRect);
-    const int winW = std::min(S(820), static_cast<int>(work.right - work.left));
-    const int winH = std::min(S(600), static_cast<int>(work.bottom - work.top));
-    int winX = (ownerRect.left + ownerRect.right - winW) / 2;
-    int winY = (ownerRect.top + ownerRect.bottom - winH) / 2;
-    winX = std::clamp(winX, static_cast<int>(work.left), std::max(static_cast<int>(work.left), static_cast<int>(work.right) - winW));
-    winY = std::clamp(winY, static_cast<int>(work.top), std::max(static_cast<int>(work.top), static_cast<int>(work.bottom) - winH));
+        state.hWnd = CreateWindowExA(WS_EX_DLGMODALFRAME, PICKER_CLASS, state.Title.c_str(),
+            WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_CLIPCHILDREN,
+            winX, winY, winW, winH, hOwner, nullptr, GetModuleHandleA(nullptr), nullptr);
+        if (!state.hWnd)
+            return false;
 
-    FString title = Translations::TranslateOrDefault("CTerrainGenerator.PickTilesTitle", "Pick tiles");
-    state.hWnd = CreateWindowExA(WS_EX_DLGMODALFRAME, PICKER_CLASS, title.c_str(),
-        WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_CLIPCHILDREN,
-        winX, winY, winW, winH, hOwner, nullptr, GetModuleHandleA(nullptr), nullptr);
-
-    bool accepted = false;
-    if (state.hWnd)
-    {
         FString textOk = Translations::TranslateOrDefault("CTerrainGenerator.PickTilesOK", "OK");
         FString textCancel = Translations::TranslateOrDefault("CTerrainGenerator.PickTilesCancel", "Cancel");
         FString textAll = Translations::TranslateOrDefault("CTerrainGenerator.PickTilesAll", "Select all");
@@ -602,18 +580,228 @@ bool CTilePicker::Pick(HWND hOwner, int tileSet, std::vector<int>& selected)
         if (hOwner)
             SetForegroundWindow(hOwner);
 
-        accepted = state.Accepted;
-        if (accepted)
+        return state.Accepted;
+    }
+
+    void ReleaseCells(PickerState& state)
+    {
+        for (auto& cell : state.Cells)
         {
-            selected.assign(state.Selected.begin(), state.Selected.end());
+            if (cell.Bitmap)
+                DeleteObject(cell.Bitmap);
+        }
+        state.Cells.clear();
+    }
+
+    PickerState MakeState()
+    {
+        PickerState state;
+        state.Scale = CFinalSunAppExt::ProgramScaleFactor;
+        if (state.Scale < 1.0f)
+            state.Scale = 1.0f;
+        return state;
+    }
+
+    // Draws a palette based object image (tree, rock...) on a light background and
+    // returns it as a 32 bit bitmap cropped to the visible pixels.
+    HBITMAP CaptureObject(const FString& id, int& width, int& height)
+    {
+        width = 0;
+        height = 0;
+
+        TempValueHolder<bool> keepShadowOff(ExtConfigs::InGameDisplay_Shadow, false);
+        TempValueHolder<bool> objectViewMode(CLoadingExt::IsLoadingObjectView, true);
+
+        if (!CLoadingExt::IsObjectPreviewLoaded(id) && !CLoadingExt::IsObjectLoaded(id))
+            CLoadingExt::GetExtension()->LoadObjects(id);
+
+        FString imageName = CLoadingExt::GetImageName(id, 0);
+        ImageDataClassSafe* pd = CLoadingExt::GetImageDataFromMap(imageName);
+        if (!pd || !pd->pImageBuffer || !pd->pPixelValidRanges || !pd->pPalette
+            || pd->FullWidth <= 0 || pd->FullHeight <= 0)
+            return nullptr;
+
+        const int fullW = pd->FullWidth;
+        const int fullH = pd->FullHeight;
+
+        // Bounding box of the visible pixels.
+        int minX = fullW, maxX = -1, minY = fullH, maxY = -1;
+        for (int y = 0; y < fullH; ++y)
+        {
+            const int left = pd->pPixelValidRanges[y].First;
+            const int right = pd->pPixelValidRanges[y].Last;
+            if (left > right)
+                continue;
+            minX = std::min(minX, left);
+            maxX = std::max(maxX, right);
+            minY = std::min(minY, y);
+            maxY = std::max(maxY, y);
+        }
+        if (maxX < minX || maxY < minY)
+            return nullptr;
+
+        const int w = maxX - minX + 1;
+        const int h = maxY - minY + 1;
+
+        BITMAPINFO bmi = {};
+        bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bmi.bmiHeader.biWidth = w;
+        bmi.bmiHeader.biHeight = -h; // top-down
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB;
+
+        void* pBits = nullptr;
+        HDC hScreen = GetDC(nullptr);
+        HBITMAP hBitmap = CreateDIBSection(hScreen, &bmi, DIB_RGB_COLORS, &pBits, nullptr, 0);
+        ReleaseDC(nullptr, hScreen);
+        if (!hBitmap || !pBits)
+        {
+            if (hBitmap)
+                DeleteObject(hBitmap);
+            return nullptr;
+        }
+
+        constexpr BYTE BG_R = 205, BG_G = 210, BG_B = 205;
+        BYTE* dst = static_cast<BYTE*>(pBits);
+        const BYTE* src = pd->pImageBuffer.get();
+        const BYTE* opacity = pd->pOpacity ? pd->pOpacity.get() : nullptr;
+
+        for (int y = 0; y < h; ++y)
+        {
+            const int sy = minY + y;
+            const int left = pd->pPixelValidRanges[sy].First;
+            const int right = pd->pPixelValidRanges[sy].Last;
+            BYTE* row = dst + static_cast<size_t>(y) * w * 4;
+            for (int x = 0; x < w; ++x)
+            {
+                const int sx = minX + x;
+                BYTE r = BG_R, g = BG_G, b = BG_B;
+                if (sx >= left && sx <= right)
+                {
+                    const BYTE index = src[sy * fullW + sx];
+                    if (index != 0)
+                    {
+                        const int alpha = opacity ? opacity[sy * fullW + sx] : 255;
+                        const auto& c = pd->pPalette->Data[index];
+                        r = static_cast<BYTE>((c.R * alpha + BG_R * (255 - alpha)) / 255);
+                        g = static_cast<BYTE>((c.G * alpha + BG_G * (255 - alpha)) / 255);
+                        b = static_cast<BYTE>((c.B * alpha + BG_B * (255 - alpha)) / 255);
+                    }
+                }
+                row[x * 4 + 0] = b;
+                row[x * 4 + 1] = g;
+                row[x * 4 + 2] = r;
+                row[x * 4 + 3] = 255;
+            }
+        }
+
+        width = w;
+        height = h;
+        return hBitmap;
+    }
+}
+
+bool CTilePicker::Pick(HWND hOwner, int tileSet, std::vector<int>& selected)
+{
+    if (g_State)
+        return false; // already open
+
+    int start = 0;
+    int count = 0;
+    if (!GetTileRange(tileSet, start, count))
+        return false;
+
+    RegisterClasses();
+
+    PickerState state = MakeState();
+    g_State = &state;
+    state.Title = Translations::TranslateOrDefault("CTerrainGenerator.PickTilesTitle", "Pick tiles").c_str();
+
+    for (int idx : selected)
+    {
+        if (idx >= 0 && idx < count)
+            state.Selected.insert(std::to_string(idx));
+    }
+
+    state.Cells.reserve(count);
+    for (int i = 0; i < count; ++i)
+    {
+        Cell cell;
+        cell.Key = std::to_string(i);
+        cell.Bitmap = CaptureTile(start + i, cell.Width, cell.Height);
+        state.Cells.push_back(cell);
+    }
+
+    bool accepted = RunPicker(hOwner, state);
+    if (accepted)
+    {
+        selected.clear();
+        for (const auto& cell : state.Cells) // cells are in ascending index order
+        {
+            if (state.Selected.count(cell.Key))
+                selected.push_back(std::atoi(cell.Key.c_str()));
         }
     }
 
-    for (auto& cell : state.Cells)
+    ReleaseCells(state);
+    g_State = nullptr;
+    return accepted;
+}
+
+bool CTilePicker::PickTerrain(HWND hOwner, std::vector<std::string>& selected)
+{
+    if (g_State)
+        return false; // already open
+
+    RegisterClasses();
+
+    PickerState state = MakeState();
+    g_State = &state;
+    state.Title = Translations::TranslateOrDefault("CTerrainGenerator.PickTerrainTitle", "Pick terrain objects").c_str();
+
+    for (auto& [_, obj] : Variables::RulesMap.GetSection("TerrainTypes"))
     {
-        if (cell.Bitmap)
-            DeleteObject(cell.Bitmap);
+        const char* name = obj;
+        if (!name || !*name || CViewObjectsExt::IsIgnored(name))
+            continue;
+
+        Cell cell;
+        cell.Key = name;
+        cell.Bitmap = CaptureObject(FString(name), cell.Width, cell.Height);
+        if (!cell.Bitmap)
+            continue; // not available (e.g. other theater), nothing to show
+        state.Cells.push_back(cell);
     }
+
+    // Remember typed IDs that have no thumbnail, they must survive the round trip.
+    std::set<std::string> shown;
+    for (const auto& cell : state.Cells)
+        shown.insert(cell.Key);
+    std::vector<std::string> kept;
+    for (const auto& id : selected)
+    {
+        if (shown.count(id))
+            state.Selected.insert(id);
+        else
+            kept.push_back(id);
+    }
+
+    bool accepted = false;
+    if (!state.Cells.empty())
+        accepted = RunPicker(hOwner, state);
+
+    if (accepted)
+    {
+        selected = kept;
+        for (const auto& cell : state.Cells)
+        {
+            if (state.Selected.count(cell.Key))
+                selected.push_back(cell.Key);
+        }
+    }
+
+    ReleaseCells(state);
     g_State = nullptr;
     return accepted;
 }

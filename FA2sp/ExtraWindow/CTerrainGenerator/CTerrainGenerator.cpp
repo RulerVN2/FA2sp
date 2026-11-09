@@ -41,6 +41,8 @@ HWND CTerrainGenerator::hClear;
 HWND CTerrainGenerator::hScale;
 HWND CTerrainGenerator::hTileSet[TERRAIN_GENERATOR_DISPLAY];
 HWND CTerrainGenerator::hTileIndexes[TERRAIN_GENERATOR_DISPLAY];
+HWND CTerrainGenerator::hTilePick[TERRAIN_GENERATOR_DISPLAY];
+HWND CTerrainGenerator::hTerrainPick[TERRAIN_GENERATOR_DISPLAY];
 HWND CTerrainGenerator::hTileChance[TERRAIN_GENERATOR_DISPLAY];
 HWND CTerrainGenerator::hOverlay[TERRAIN_GENERATOR_DISPLAY];
 HWND CTerrainGenerator::hOverlayData[TERRAIN_GENERATOR_DISPLAY];
@@ -348,6 +350,11 @@ void CTerrainGenerator::Initialize(HWND& hWnd)
     hTileIndexes[2] = GetDlgItem(hTab1Dlg, Controls::TileIndexes3);
     hTileIndexes[3] = GetDlgItem(hTab1Dlg, Controls::TileIndexes4);
     hTileIndexes[4] = GetDlgItem(hTab1Dlg, Controls::TileIndexes5);
+    hTilePick[0] = GetDlgItem(hTab1Dlg, Controls::TilePick1);
+    hTilePick[1] = GetDlgItem(hTab1Dlg, Controls::TilePick2);
+    hTilePick[2] = GetDlgItem(hTab1Dlg, Controls::TilePick3);
+    hTilePick[3] = GetDlgItem(hTab1Dlg, Controls::TilePick4);
+    hTilePick[4] = GetDlgItem(hTab1Dlg, Controls::TilePick5);
     hTileChance[0] = GetDlgItem(hTab1Dlg, Controls::TileChance1);
     hTileChance[1] = GetDlgItem(hTab1Dlg, Controls::TileChance2);
     hTileChance[2] = GetDlgItem(hTab1Dlg, Controls::TileChance3);
@@ -373,6 +380,11 @@ void CTerrainGenerator::Initialize(HWND& hWnd)
     hTerrainGroup[2] = GetDlgItem(hTab2Dlg, Controls::TerrainGroup3);
     hTerrainGroup[3] = GetDlgItem(hTab2Dlg, Controls::TerrainGroup4);
     hTerrainGroup[4] = GetDlgItem(hTab2Dlg, Controls::TerrainGroup5);
+    hTerrainPick[0] = GetDlgItem(hTab2Dlg, Controls::TerrainPick1);
+    hTerrainPick[1] = GetDlgItem(hTab2Dlg, Controls::TerrainPick2);
+    hTerrainPick[2] = GetDlgItem(hTab2Dlg, Controls::TerrainPick3);
+    hTerrainPick[3] = GetDlgItem(hTab2Dlg, Controls::TerrainPick4);
+    hTerrainPick[4] = GetDlgItem(hTab2Dlg, Controls::TerrainPick5);
     hTerrainChance[0] = GetDlgItem(hTab2Dlg, Controls::TerrainChance1);
     hTerrainChance[1] = GetDlgItem(hTab2Dlg, Controls::TerrainChance2);
     hTerrainChance[2] = GetDlgItem(hTab2Dlg, Controls::TerrainChance3);
@@ -910,6 +922,14 @@ BOOL CALLBACK CTerrainGenerator::DlgProcTab2(HWND hWnd, UINT Msg, WPARAM wParam,
                 OnEditchangeTerrain(4);
             }
             break;
+        case Controls::TerrainPick1:
+        case Controls::TerrainPick2:
+        case Controls::TerrainPick3:
+        case Controls::TerrainPick4:
+        case Controls::TerrainPick5:
+            if (CODE == BN_CLICKED)
+                OnClickPickTerrain(ID - Controls::TerrainPick1);
+            break;
         default:
             break;
         }
@@ -1389,11 +1409,13 @@ void CTerrainGenerator::OnSelchangePreset(bool edited, bool reload)
             SendMessage(hSmudgeGroup[idx], WM_SETTEXT, 0, (LPARAM)"");
             EnableWindow(hTileSet[idx], FALSE);
             EnableWindow(hTileIndexes[idx], FALSE);
+            EnableWindow(hTilePick[idx], FALSE);
             EnableWindow(hTileChance[idx], FALSE);
             EnableWindow(hOverlay[idx], FALSE);
             EnableWindow(hOverlayData[idx], FALSE);
             EnableWindow(hOverlayChance[idx], FALSE);
             EnableWindow(hTerrainGroup[idx], FALSE);
+            EnableWindow(hTerrainPick[idx], FALSE);
             EnableWindow(hTerrainChance[idx], FALSE);
             EnableWindow(hSmudgeGroup[idx], FALSE);
             EnableWindow(hSmudgeChance[idx], FALSE);
@@ -1586,6 +1608,38 @@ void CTerrainGenerator::OnClickPickTiles(int index)
     // Writing the text fires the same change handler as typing it by hand,
     // which stores the preset and reloads it.
     SetWindowText(hTileIndexes[index], result.c_str());
+}
+
+void CTerrainGenerator::OnClickPickTerrain(int index)
+{
+    if (index < 0 || TERRAIN_GENERATOR_DISPLAY <= index || !CurrentPreset)
+        return;
+
+    // Start from whatever is already typed in the Terrain Group box.
+    char buffer[512]{ 0 };
+    GetWindowText(hTerrainGroup[index], buffer, 511);
+    std::vector<std::string> selected;
+    for (auto& atom : FString::SplitString(FString(buffer)))
+    {
+        FString item = atom;
+        item.Trim();
+        if (!item.empty())
+            selected.push_back(item);
+    }
+
+    if (!CTilePicker::PickTerrain(m_hwnd, selected))
+        return;
+
+    FString result;
+    for (size_t i = 0; i < selected.size(); ++i)
+    {
+        if (i > 0)
+            result += ",";
+        result += selected[i];
+    }
+
+    // Writing the text fires the same change handler as typing it by hand.
+    SetWindowText(hTerrainGroup[index], result.c_str());
 }
 
 void CTerrainGenerator::OnEditchangeTerrain(int index)
@@ -2275,10 +2329,12 @@ void CTerrainGenerator::EnableWindows()
         }
         if (idx < CurrentPreset->TileSets.size()) {
             EnableWindow(hTileIndexes[idx], TRUE);
+            EnableWindow(hTilePick[idx], TRUE);
             EnableWindow(hTileChance[idx], TRUE);
         }
         else {
             EnableWindow(hTileIndexes[idx], FALSE);
+            EnableWindow(hTilePick[idx], FALSE);
             EnableWindow(hTileChance[idx], FALSE);
         }
     }
@@ -2301,9 +2357,11 @@ void CTerrainGenerator::EnableWindows()
     for (auto idx = 0; idx < TERRAIN_GENERATOR_DISPLAY; idx++) {
         if (idx < CurrentPreset->TerrainTypes.size() + 1) {
             EnableWindow(hTerrainGroup[idx], TRUE);
+            EnableWindow(hTerrainPick[idx], TRUE);
         }
         else {
             EnableWindow(hTerrainGroup[idx], FALSE);
+            EnableWindow(hTerrainPick[idx], FALSE);
         }
         if (idx < CurrentPreset->TerrainTypes.size()) {
             EnableWindow(hTerrainChance[idx], TRUE);
