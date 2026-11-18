@@ -6,6 +6,11 @@
 - Each tile also comes with: `cells_x` / `cells_y` (size in cells), `land` (clear, road, water, rock = impassable cliff, rough, ...), `height_min` / `height_max`, `has_ramp`.
 - Typical use: call it for the tile sets you plan to use (cliffs, roads, ground), look at the PNG, pick tiles by their look and size, then place them.
 
+- `tileset = N` plus `tile = T`: shows that single tile enlarged with the **sub cell number** written on every cell, and returns `sub_cells` with `cell_dx` / `cell_dy` (where the cell lands relative to sub 0, in the get_cell x/y convention), land type, height and ramp. Use it before placing cliffs and other multi-cell tiles, so you know which sub index goes where.
+
+### `observe` at a given spot
+`observe` also accepts `x` and `y` (same convention as `get_cell` and its own output). The view is centred on that cell for the screenshot and object list, then put back where it was. Use it to inspect any part of the map without asking the user to scroll.
+
 ### `validate_map` — find mistakes after drawing
 Returns concrete issues with coordinates (same x / y convention as `observe` and `get_cell`):
 - `invalid_tile` (error): a cell uses a tile index that does not exist in this theater.

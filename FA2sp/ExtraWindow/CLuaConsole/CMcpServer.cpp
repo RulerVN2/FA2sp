@@ -426,10 +426,16 @@ static json ProcessRequest(json& request)
                             "smudge, overlay). All objects include x/y coordinates. Infantry/Unit/Aircraft/"
                             "Building also include index, registration ID, display name, and owner house. "
                             "TerrainType and Smudge include index and registration ID. Overlay includes "
-                            "Overlay Index and Overlaydata Index."},
+                            "Overlay Index and Overlaydata Index. "
+                            "Optionally pass 'x' and 'y' (same convention as get_cell/observe output) to "
+                            "look at that spot instead: the view is centred on the cell for the capture "
+                            "and put back afterwards."},
             {"inputSchema", {
                 {"type", "object"},
-                {"properties", json::object()},
+                {"properties", {
+                    {"x", {{"type", "integer"}, {"description", "Cell x to centre the capture on (needs y)."}}},
+                    {"y", {{"type", "integer"}, {"description", "Cell y to centre the capture on (needs x)."}}}
+                }},
                 {"required", json::array()}
             }}
         });
@@ -442,12 +448,17 @@ static json ProcessRequest(json& request)
                             "returns the image path plus per-tile facts: tile index, size in cells, land "
                             "types (clear/road/water/rock...), height range and whether it has a ramp. "
                             "Open the PNG to choose tiles by sight, then use the index with the Lua API. "
-                            "Use 'page' (0-based) for tile sets with more than 64 tiles."},
+                            "Use 'page' (0-based) for tile sets with more than 64 tiles. "
+                            "With 'tileset' AND 'tile' it instead shows that one tile enlarged with the "
+                            "number of every sub cell written on it, and returns for each sub cell its "
+                            "offset (cell_dx, cell_dy), land type, height and ramp flag - use this before "
+                            "placing multi-cell tiles such as cliffs."},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", {
                     {"tileset", {{"type", "integer"}, {"description", "Tile set number. Omit to list all tile sets."}}},
-                    {"page", {{"type", "integer"}, {"description", "Page number, default 0."}}}
+                    {"page", {{"type", "integer"}, {"description", "Page number, default 0."}}},
+                    {"tile", {{"type", "integer"}, {"description", "Tile index inside the tile set (as shown in the contact sheet). Requires 'tileset'."}}}
                 }},
                 {"required", json::array()}
             }}
@@ -781,6 +792,8 @@ static json ProcessRequest(json& request)
         {
             MCPRequest* mcpReq = new MCPRequest();
             mcpReq->type = 11;
+            if (arguments.contains("x") && arguments.contains("y"))
+                mcpReq->input = std::to_string(arguments.value("x", 0)) + "," + std::to_string(arguments.value("y", 0));
             mcpReq->hEvent = CreateEventA(nullptr, FALSE, FALSE, nullptr);
             if (RunOnEditorThread(WM_MCP_OBSERVE, mcpReq))
             {
@@ -799,7 +812,7 @@ static json ProcessRequest(json& request)
             MCPRequest* mcpReq = new MCPRequest();
             mcpReq->type = atlas ? 14 : 15;
             if (atlas)
-                mcpReq->input = std::to_string(arguments.value("tileset", -1)) + "," + std::to_string(arguments.value("page", 0));
+                mcpReq->input = std::to_string(arguments.value("tileset", -1)) + "," + std::to_string(arguments.value("page", 0)) + "," + std::to_string(arguments.value("tile", -1));
             else
                 mcpReq->input = std::to_string(arguments.value("max_issues", 100));
             mcpReq->hEvent = CreateEventA(nullptr, FALSE, FALSE, nullptr);
@@ -1662,6 +1675,27 @@ void CMcpServer::HandleObserve(MCPRequest* req)
 {
     json j;
 
+    // Optional: look at a given cell. x/y use the Lua convention (x = the second map axis).
+    bool movedView = false;
+    ppmfc::CPoint viewBefore(0, 0);
+    {
+        int wantX = 0, wantY = 0;
+        if (!req->input.empty() && sscanf_s(req->input.c_str(), "%d,%d", &wantX, &wantY) == 2)
+        {
+            if (!CMapData::Instance->IsCoordInMap(wantY, wantX))
+            {
+                j["error"] = "Cell (" + std::to_string(wantX) + ", " + std::to_string(wantY) + ") is outside the map.";
+                req->result = SafeDump(j);
+                SetEvent(req->hEvent);
+                return;
+            }
+            auto pView = CIsoViewExt::GetExtension();
+            viewBefore = pView->ViewPosition;
+            CIsoViewExt::MoveToMapCoord(wantY, wantX);
+            movedView = true;
+        }
+    }
+
     std::string screenshotPath = CLuaConsole::CaptureScreenshotTemp();
     j["screenshot"] = ToExternalEncoding(screenshotPath);
 
@@ -1876,15 +1910,23 @@ void CMcpServer::HandleObserve(MCPRequest* req)
 
     j["objects"] = objects;
 
+    if (movedView)
+    {
+        auto pView = CIsoViewExt::GetExtension();
+        pView->MoveTo(viewBefore.x, viewBefore.y);
+        pView->RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+        CFinalSunDlg::Instance->MyViewFrame.Minimap.RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+    }
+
     req->result = SafeDump(j);
     SetEvent(req->hEvent);
 }
 
 void CMcpServer::HandleTileAtlas(MCPRequest* req)
 {
-    int tileSet = -1, page = 0;
-    sscanf_s(req->input.c_str(), "%d,%d", &tileSet, &page);
-    json j = CMcpAiTools::TileAtlas(tileSet, page, [](const std::string& s) { return ToExternalEncoding(s); });
+    int tileSet = -1, page = 0, tile = -1;
+    sscanf_s(req->input.c_str(), "%d,%d,%d", &tileSet, &page, &tile);
+    json j = CMcpAiTools::TileAtlas(tileSet, page, tile, [](const std::string& s) { return ToExternalEncoding(s); });
     req->result = SafeDump(j);
     SetEvent(req->hEvent);
 }

@@ -11,6 +11,7 @@
 
 #include "../../Ext/CMapData/Body.h"
 #include "../../Ext/CIsoView/Body.h"
+#include "../../Ext/CTileSetBrowserView/Body.h"
 #include "../../Helpers/FString.h"
 #include "../../Helpers/STDHelpers.h"
 #include "../CTerrainGenerator/CTilePicker.h"
@@ -103,7 +104,142 @@ namespace
     }
 }
 
-json CMcpAiTools::TileAtlas(int tileSet, int page, const Encoder& encode)
+namespace
+{
+    // One tile, enlarged, with the number of every sub cell written on it.
+    json RenderTileDetail(int tileSet, int start, int count, int rel, const CMcpAiTools::Encoder& encode)
+    {
+        json result;
+        if (rel < 0 || rel >= count)
+        {
+            result["error"] = "Tile index out of range for this tile set.";
+            result["tile_count"] = count;
+            return result;
+        }
+        const int abs = start + rel;
+        if (tileSet >= 10000)
+        {
+            result["error"] = "Sub cell numbering is only available for the normal tile sets.";
+            return result;
+        }
+        if (abs < 0 || abs >= CMapDataExt::TileDataCount)
+        {
+            result["error"] = "Tile index out of range.";
+            return result;
+        }
+
+        int tw = 0, th = 0;
+        HBITMAP hTile = CTilePicker::CaptureTileBitmap(abs, tw, th);
+        if (!hTile || tw <= 0 || th <= 0)
+        {
+            result["error"] = "Could not render this tile.";
+            return result;
+        }
+
+        const CTileTypeClass& type = CMapDataExt::TileData[abs];
+        const int addedW = CTileSetBrowserViewExt::GetAddedWidth(abs);
+        const int addedH = CTileSetBrowserViewExt::GetAddedHeight(abs);
+
+        const double scale = std::max(1.0, std::min({ 4.0, 640.0 / tw, 480.0 / th }));
+        const int pad = 6;
+        const int width = static_cast<int>(tw * scale) + pad * 2;
+        const int height = static_cast<int>(th * scale) + pad * 2;
+
+        HDC hScreen = GetDC(nullptr);
+        HDC hMem = CreateCompatibleDC(hScreen);
+        HBITMAP hSheet = CreateCompatibleBitmap(hScreen, width, height);
+        HGDIOBJ hOldSheet = SelectObject(hMem, hSheet);
+        HBRUSH hBack = CreateSolidBrush(RGB(48, 52, 60));
+        RECT all = { 0, 0, width, height };
+        FillRect(hMem, &all, hBack);
+        DeleteObject(hBack);
+
+        HDC hTileDC = CreateCompatibleDC(hScreen);
+        HGDIOBJ hOldTile = SelectObject(hTileDC, hTile);
+        SetStretchBltMode(hMem, COLORONCOLOR);
+        StretchBlt(hMem, pad, pad, static_cast<int>(tw * scale), static_cast<int>(th * scale),
+            hTileDC, 0, 0, tw, th, SRCCOPY);
+        SelectObject(hTileDC, hOldTile);
+        DeleteDC(hTileDC);
+        DeleteObject(hTile);
+
+        HFONT hFont = CreateFontA(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, "Arial");
+        HGDIOBJ hOldFont = SelectObject(hMem, hFont);
+        SetBkMode(hMem, OPAQUE);
+        SetBkColor(hMem, RGB(20, 20, 24));
+        SetTextColor(hMem, RGB(255, 235, 120));
+        SetTextAlign(hMem, TA_CENTER | TA_TOP);
+
+        json cells = json::array();
+        int p = 0;
+        for (int i = 0; i < type.Height; ++i)
+        {
+            for (int e = 0; e < type.Width; ++e)
+            {
+                if (p >= static_cast<int>(type.TileBlockCount) || !type.TileBlockDatas)
+                    break;
+                const CTileBlockClass& block = type.TileBlockDatas[p];
+                if (block.HasValidImage)
+                {
+                    // Centre of this cell's diamond inside the rendered tile (same layout RenderTile uses).
+                    const double cx = e * 30 - i * 30 + 30 - type.Bounds.left + addedW;
+                    const double cy = e * 15 + i * 15 + 15 - block.Height * 15 - type.Bounds.top + addedH;
+                    char label[16];
+                    sprintf_s(label, "%d", p);
+                    TextOutA(hMem, pad + static_cast<int>(cx * scale), pad + static_cast<int>(cy * scale) - 8,
+                        label, static_cast<int>(strlen(label)));
+                }
+                cells.push_back({
+                    {"sub_index", p},
+                    {"cell_dx", e},
+                    {"cell_dy", i},
+                    {"filled", block.HasValidImage != FALSE},
+                    {"land", LandName(static_cast<int>(block.TerrainType))},
+                    {"height", static_cast<int>(block.Height)},
+                    {"ramp", block.RampType != 0}
+                });
+                ++p;
+            }
+        }
+
+        SelectObject(hMem, hOldFont);
+        DeleteObject(hFont);
+        SelectObject(hMem, hOldSheet);
+
+        wchar_t fileName[96];
+        swprintf_s(fileName, L"tiledetail_%d_%d.png", tileSet, rel);
+        const std::wstring path = TempFilePath(fileName);
+        const bool saved = !path.empty() && SavePng(hSheet, path);
+        DeleteDC(hMem);
+        DeleteObject(hSheet);
+        ReleaseDC(nullptr, hScreen);
+
+        if (!saved)
+        {
+            result["error"] = "Could not write the image.";
+            return result;
+        }
+
+        result["tileset"] = tileSet;
+        result["tileset_name"] = encode(TileSetName(tileSet));
+        result["tile"] = rel;
+        result["absolute_index"] = abs;
+        result["image"] = encode(STDHelpers::WStringToString(path));
+        result["image_size"] = { {"width", width}, {"height", height} };
+        result["cells_x"] = static_cast<int>(type.Width);
+        result["cells_y"] = static_cast<int>(type.Height);
+        result["sub_cells"] = cells;
+        result["layout"] = "Each yellow number in the picture is the sub_index of the cell it sits on. "
+            "cell_dx / cell_dy give where that cell lands when the tile is placed with its first "
+            "cell (sub_index 0) at (x, y): the cell goes to (x + cell_dx, y + cell_dy) in the same x/y "
+            "convention as get_cell and observe. Cells with filled=false are empty. "
+            "Height is the cell's height offset (0 = lowest cell of the tile).";
+        return result;
+    }
+}
+
+json CMcpAiTools::TileAtlas(int tileSet, int page, int tile, const Encoder& encode)
 {
     json result;
     if (!CMapDataExt::TileData || CMapDataExt::TileSet_starts.size() < 2)
@@ -143,6 +279,9 @@ json CMcpAiTools::TileAtlas(int tileSet, int page, const Encoder& encode)
         result["error"] = "Unknown or empty tile set.";
         return result;
     }
+
+    if (tile >= 0)
+        return RenderTileDetail(tileSet, start, count, tile, encode);
 
     constexpr int COLUMNS = 8;
     constexpr int ROWS = 8;

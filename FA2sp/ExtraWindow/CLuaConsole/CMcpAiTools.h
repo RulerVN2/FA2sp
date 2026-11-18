@@ -18,7 +18,8 @@ public:
 
     // tileSet < 0 : list all tile sets (index, name, tile_count).
     // tileSet >= 0: render page `page` (0-based) of that tile set into a PNG.
-    static nlohmann::json TileAtlas(int tileSet, int page, const Encoder& encode);
+    // tile >= 0 (with tileSet): enlarge that one tile (index inside the tile set) and number its sub cells.
+    static nlohmann::json TileAtlas(int tileSet, int page, int tile, const Encoder& encode);
 
     // Scans the open map. At most maxIssues individual issues are listed,
     // the per-type counts always cover everything.
