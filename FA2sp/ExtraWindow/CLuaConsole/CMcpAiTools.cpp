@@ -42,7 +42,8 @@ namespace
         section.Format("TileSet%04d", tileSet);
         if (!CINI::CurrentTheater->SectionExists(section))
             return "";
-        return std::string(CINI::CurrentTheater->GetString(section, "SetName").c_str());
+        const char* name = CINI::CurrentTheater->GetString(section, "SetName");
+        return name ? name : "";
     }
 
     bool SavePng(HBITMAP hBitmap, const std::wstring& path)
