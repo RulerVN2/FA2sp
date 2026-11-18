@@ -1677,7 +1677,7 @@ void CMcpServer::HandleObserve(MCPRequest* req)
 
     // Optional: look at a given cell. x/y use the Lua convention (x = the second map axis).
     bool movedView = false;
-    ppmfc::CPoint viewBefore(0, 0);
+    int viewBeforeX = 0, viewBeforeY = 0;
     {
         int wantX = 0, wantY = 0;
         if (!req->input.empty() && sscanf_s(req->input.c_str(), "%d,%d", &wantX, &wantY) == 2)
@@ -1690,7 +1690,8 @@ void CMcpServer::HandleObserve(MCPRequest* req)
                 return;
             }
             auto pView = CIsoViewExt::GetExtension();
-            viewBefore = pView->ViewPosition;
+            viewBeforeX = pView->ViewPosition.x;
+            viewBeforeY = pView->ViewPosition.y;
             CIsoViewExt::MoveToMapCoord(wantY, wantX);
             movedView = true;
         }
@@ -1913,7 +1914,7 @@ void CMcpServer::HandleObserve(MCPRequest* req)
     if (movedView)
     {
         auto pView = CIsoViewExt::GetExtension();
-        pView->MoveTo(viewBefore.x, viewBefore.y);
+        pView->MoveTo(viewBeforeX, viewBeforeY);
         pView->RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
         CFinalSunDlg::Instance->MyViewFrame.Minimap.RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
     }
