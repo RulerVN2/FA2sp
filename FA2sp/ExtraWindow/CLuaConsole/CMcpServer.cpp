@@ -1,5 +1,6 @@
 #include "CMcpServer.h"
 #include "CLuaConsole.h"
+#include "CMcpAiTools.h"
 #include <httplib.h>
 #include <json.hpp>
 #include <thread>
@@ -433,6 +434,41 @@ static json ProcessRequest(json& request)
             }}
         });
 
+        tools.push_back({
+            {"name", "tile_atlas"},
+            {"description", "Show what tiles look like. Without arguments (or tileset < 0) returns the list "
+                            "of tile sets (index, name, tile_count). With 'tileset' it renders a labelled "
+                            "contact sheet (PNG, 8 columns, up to 64 tiles per page) of that tile set and "
+                            "returns the image path plus per-tile facts: tile index, size in cells, land "
+                            "types (clear/road/water/rock...), height range and whether it has a ramp. "
+                            "Open the PNG to choose tiles by sight, then use the index with the Lua API. "
+                            "Use 'page' (0-based) for tile sets with more than 64 tiles."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"tileset", {{"type", "integer"}, {"description", "Tile set number. Omit to list all tile sets."}}},
+                    {"page", {{"type", "integer"}, {"description", "Page number, default 0."}}}
+                }},
+                {"required", json::array()}
+            }}
+        });
+        tools.push_back({
+            {"name", "validate_map"},
+            {"description", "Check the open map for concrete problems and return them as a list with "
+                            "coordinates (same x/y convention as observe and get_cell): tiles that do not "
+                            "exist, ground units on cliffs, buildings on cliffs, trees on water, height "
+                            "jumps without a ramp or cliff tile, and large bare areas without any "
+                            "decoration. Also returns composition statistics (tile set usage, decoration "
+                            "density). Run it after drawing, fix what it lists, run it again."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"max_issues", {{"type", "integer"}, {"description", "How many individual issues to list (default 100). Counts always cover everything."}}}
+                }},
+                {"required", json::array()}
+            }}
+        });
+
         response["result"] = {{"tools", tools}};
     }
     // ----- tools/call -----
@@ -750,6 +786,26 @@ static json ProcessRequest(json& request)
             {
                 std::string out = ToExternalEncoding(mcpReq->result);
                 response["result"] = {{"content", json::array({{{"type", "text"}, {"text", out}}})}};
+            }
+            else
+            {
+                response["error"] = {{"code", -32000}, {"message", "The editor main window is not ready yet. Please try again."}};
+            }
+            CloseHandle(mcpReq->hEvent); delete mcpReq;
+        }
+        else if (toolName == "tile_atlas" || toolName == "validate_map")
+        {
+            const bool atlas = toolName == "tile_atlas";
+            MCPRequest* mcpReq = new MCPRequest();
+            mcpReq->type = atlas ? 14 : 15;
+            if (atlas)
+                mcpReq->input = std::to_string(arguments.value("tileset", -1)) + "," + std::to_string(arguments.value("page", 0));
+            else
+                mcpReq->input = std::to_string(arguments.value("max_issues", 100));
+            mcpReq->hEvent = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+            if (RunOnEditorThread(atlas ? WM_MCP_TILE_ATLAS : WM_MCP_VALIDATE, mcpReq))
+            {
+                response["result"] = {{"content", json::array({{{"type", "text"}, {"text", mcpReq->result}}})}};
             }
             else
             {
@@ -1820,6 +1876,24 @@ void CMcpServer::HandleObserve(MCPRequest* req)
 
     j["objects"] = objects;
 
+    req->result = SafeDump(j);
+    SetEvent(req->hEvent);
+}
+
+void CMcpServer::HandleTileAtlas(MCPRequest* req)
+{
+    int tileSet = -1, page = 0;
+    sscanf_s(req->input.c_str(), "%d,%d", &tileSet, &page);
+    json j = CMcpAiTools::TileAtlas(tileSet, page, [](const std::string& s) { return ToExternalEncoding(s); });
+    req->result = SafeDump(j);
+    SetEvent(req->hEvent);
+}
+
+void CMcpServer::HandleValidate(MCPRequest* req)
+{
+    int maxIssues = 100;
+    sscanf_s(req->input.c_str(), "%d", &maxIssues);
+    json j = CMcpAiTools::ValidateMap(maxIssues, [](const std::string& s) { return ToExternalEncoding(s); });
     req->result = SafeDump(j);
     SetEvent(req->hEvent);
 }

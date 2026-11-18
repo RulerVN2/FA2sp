@@ -18,10 +18,12 @@
 #define WM_MCP_OBSERVE           (WM_APP + 209)
 #define WM_MCP_SPEC              (WM_APP + 210)
 #define WM_MCP_DESPEC            (WM_APP + 211)
+#define WM_MCP_TILE_ATLAS        (WM_APP + 212)
+#define WM_MCP_VALIDATE          (WM_APP + 213)
 
 struct MCPRequest
 {
-    int type;              // 0=run_lua, 3=list_knowledge, 4=get_knowledge, 5=search_knowledge, 6=list_skill, 7=get_skill, 8=list_scripts, 9=get_script, 10=save_script, 11=observe, 12=spec, 13=despec
+    int type;              // 0=run_lua, 3=list_knowledge, 4=get_knowledge, 5=search_knowledge, 6=list_skill, 7=get_skill, 8=list_scripts, 9=get_script, 10=save_script, 11=observe, 12=spec, 13=despec, 14=tile_atlas, 15=validate_map
     std::string input;     // script / doc relpath / search query
     std::string result;    // output captured during execution
     HANDLE hEvent;         // signalled when main-thread processing completes
@@ -119,6 +121,8 @@ public:
     static void HandleObserve(MCPRequest* req);
     static void HandleSpec(MCPRequest* req);
     static void HandleDespec(MCPRequest* req);
+    static void HandleTileAtlas(MCPRequest* req);
+    static void HandleValidate(MCPRequest* req);
 
     // Build / rebuild the search index from knowledge files
     static void BuildSearchIndex();

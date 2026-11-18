@@ -218,6 +218,7 @@
     <ClCompile Include="FA2sp\ExtraWindow\CListUInputDlg\CListUInputDlg.cpp" />
     <ClCompile Include="FA2sp\ExtraWindow\CLuaConsole\CLuaConsole.cpp" />
     <ClCompile Include="FA2sp\ExtraWindow\CLuaConsole\CMcpServer.cpp" />
+    <ClCompile Include="FA2sp\ExtraWindow\CLuaConsole\CMcpAiTools.cpp" />
     <ClCompile Include="FA2sp\ExtraWindow\CLuaDialog\CLuaDialog.cpp" />
     <ClCompile Include="FA2sp\ExtraWindow\CMapRendererDlg\CMapRendererDlg.cpp" />
     <ClCompile Include="FA2sp\ExtraWindow\CMeasurementToolbox\CMeasurementToolbox.cpp" />

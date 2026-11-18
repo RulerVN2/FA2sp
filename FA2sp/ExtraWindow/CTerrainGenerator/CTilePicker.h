@@ -22,4 +22,10 @@ public:
     //            returned) the chosen IDs. IDs that were typed but have no thumbnail
     //            (not available in this theater) are kept in front of the list.
     static bool PickTerrain(HWND hOwner, std::vector<std::string>& selected);
+
+    // Shared helpers (also used by the MCP tile atlas).
+    // Absolute index of the first tile and number of tiles of a tile set.
+    static bool GetTileSetRange(int tileSet, int& start, int& count);
+    // Copies the rendered tile into a GDI bitmap (caller deletes it).
+    static HBITMAP CaptureTileBitmap(int tileIndex, int& width, int& height);
 };

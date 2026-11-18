@@ -805,3 +805,13 @@ bool CTilePicker::PickTerrain(HWND hOwner, std::vector<std::string>& selected)
     g_State = nullptr;
     return accepted;
 }
+
+bool CTilePicker::GetTileSetRange(int tileSet, int& start, int& count)
+{
+    return ::GetTileRange(tileSet, start, count);
+}
+
+HBITMAP CTilePicker::CaptureTileBitmap(int tileIndex, int& width, int& height)
+{
+    return ::CaptureTile(tileIndex, width, height);
+}
