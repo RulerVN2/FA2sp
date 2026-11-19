@@ -20,19 +20,25 @@ using json = nlohmann::json;
 
 namespace
 {
-    // Land types as the game numbers them for tile cells.
-    constexpr int LAND_WATER = 2;
-    constexpr int LAND_ROCK = 3;
+    // Land codes stored in tile cells (same table the Lua API uses for land_type).
+    bool IsRock(int code) { return code == 0x7 || code == 0x8 || code == 0xF; }
+    bool IsWater(int code) { return code == 0x9; }
 
-    const char* LandName(int type)
+    const char* LandName(int code)
     {
-        static const char* names[] = {
-            "clear", "road", "water", "rock", "wall", "tiberium",
-            "beach", "rough", "ice", "railroad", "tunnel", "weeds"
-        };
-        if (type >= 0 && type < static_cast<int>(sizeof(names) / sizeof(names[0])))
-            return names[type];
-        return "unknown";
+        switch (code)
+        {
+        case 0x0: case 0xD: return "clear";
+        case 0xB: case 0xC: return "road";
+        case 0x9: return "water";
+        case 0x7: case 0x8: case 0xF: return "rock";
+        case 0xA: return "beach";
+        case 0xE: return "rough";
+        case 0x1: case 0x2: case 0x3: case 0x4: return "ice";
+        case 0x6: return "railroad";
+        case 0x5: return "tunnel";
+        default: return "unknown";
+        }
     }
 
     std::string TileSetName(int tileSet)
@@ -171,6 +177,36 @@ namespace
         SetTextColor(hMem, RGB(255, 235, 120));
         SetTextAlign(hMem, TA_CENTER | TA_TOP);
 
+        // Faint outline of every cell's footprint so the numbers can be checked against the cells.
+        {
+            HPEN hPen = CreatePen(PS_SOLID, 1, RGB(110, 190, 255));
+            HGDIOBJ hOldPen = SelectObject(hMem, hPen);
+            int q = 0;
+            for (int i = 0; i < type.Height; ++i)
+            {
+                for (int e = 0; e < type.Width; ++e)
+                {
+                    if (q >= static_cast<int>(type.TileBlockCount) || !type.TileBlockDatas)
+                        break;
+                    const CTileBlockClass& blk = type.TileBlockDatas[q];
+                    const double cx = e * 30 - i * 30 + 30 - type.Bounds.left + addedW;
+                    const double cy = e * 15 + i * 15 + 15 - blk.Height * 15 - type.Bounds.top + addedH;
+                    const int px = pad + static_cast<int>(cx * scale);
+                    const int py = pad + static_cast<int>(cy * scale);
+                    const int hw = static_cast<int>(30 * scale);
+                    const int hh = static_cast<int>(15 * scale);
+                    MoveToEx(hMem, px, py - hh, nullptr);
+                    LineTo(hMem, px + hw, py);
+                    LineTo(hMem, px, py + hh);
+                    LineTo(hMem, px - hw, py);
+                    LineTo(hMem, px, py - hh);
+                    ++q;
+                }
+            }
+            SelectObject(hMem, hOldPen);
+            DeleteObject(hPen);
+        }
+
         json cells = json::array();
         int p = 0;
         for (int i = 0; i < type.Height; ++i)
@@ -196,6 +232,7 @@ namespace
                     {"cell_dy", i},
                     {"filled", block.HasValidImage != FALSE},
                     {"land", LandName(static_cast<int>(block.TerrainType))},
+                    {"land_code", static_cast<int>(block.TerrainType)},
                     {"height", static_cast<int>(block.Height)},
                     {"ramp", block.RampType != 0}
                 });
@@ -394,9 +431,14 @@ json CMcpAiTools::TileAtlas(int tileSet, int page, int tile, const Encoder& enco
             if (valid > 0)
             {
                 json landNames = json::array();
+                json landCodes = json::array();
                 for (int l : lands)
+                {
                     landNames.push_back(LandName(l));
+                    landCodes.push_back(l);
+                }
                 entry["land"] = landNames;
+                entry["land_codes"] = landCodes;
                 entry["height_min"] = minH;
                 entry["height_max"] = maxH;
                 entry["has_ramp"] = !ramps.empty();
@@ -478,6 +520,28 @@ json CMcpAiTools::ValidateMap(int maxIssues, const Encoder& encode)
             });
         };
 
+    std::vector<signed char> rockCache(std::max(0, CMapDataExt::TileDataCount), -1);
+    auto tileHasRock = [&](int tile) -> bool
+        {
+            if (tile < 0 || tile >= CMapDataExt::TileDataCount)
+                return false;
+            if (rockCache[tile] < 0)
+            {
+                bool any = false;
+                const CTileTypeClass& type = CMapDataExt::TileData[tile];
+                for (int k = 0; k < static_cast<int>(type.TileBlockCount) && type.TileBlockDatas; ++k)
+                {
+                    if (type.TileBlockDatas[k].HasValidImage && IsRock(static_cast<int>(type.TileBlockDatas[k].TerrainType)))
+                    {
+                        any = true;
+                        break;
+                    }
+                }
+                rockCache[tile] = any ? 1 : 0;
+            }
+            return rockCache[tile] == 1;
+        };
+
     std::map<int, int> tileSetCells;
     int cellsInMap = 0;
     int decorated = 0;
@@ -532,11 +596,11 @@ json CMcpAiTools::ValidateMap(int maxIssues, const Encoder& encode)
         const bool decor = hasTerrain || hasStructure || hasOverlay || hasSmudge;
         decorated += decor;
 
-        if (land == LAND_ROCK && (hasInfantry || hasUnit))
+        if (IsRock(land) && (hasInfantry || hasUnit))
             report("unit_on_cliff", "error", cx, cy, "A ground unit stands on an impassable cliff cell.");
-        if (land == LAND_ROCK && hasStructure)
+        if (IsRock(land) && hasStructure)
             report("building_on_cliff", "warning", cx, cy, "A building covers a cliff cell.");
-        if (land == LAND_WATER && hasTerrain)
+        if (IsWater(land) && hasTerrain)
             report("tree_on_water", "warning", cx, cy, "A terrain object (tree/rock) sits on water.");
 
         // Height jump to the next cell in each direction (each pair is looked at once).
@@ -558,7 +622,11 @@ json CMcpAiTools::ValidateMap(int maxIssues, const Encoder& encode)
                 continue;
             const CTileBlockClass* nextBlock = BlockOfCell(next);
             const int nextLand = nextBlock ? static_cast<int>(nextBlock->TerrainType) : 0;
-            if (land == LAND_ROCK || nextLand == LAND_ROCK)
+            // Shore walls, quays and cliffs are meant to jump in height: leave cliff tiles
+            // and anything touching water alone.
+            if (IsRock(land) || IsRock(nextLand) || IsWater(land) || IsWater(nextLand))
+                continue;
+            if (tileHasRock(tile) || tileHasRock(next->TileIndex == 0xFFFF ? 0 : next->TileIndex))
                 continue;
             if (hasRamp || (nextBlock && nextBlock->RampType != 0))
                 continue;
@@ -569,8 +637,8 @@ json CMcpAiTools::ValidateMap(int maxIssues, const Encoder& encode)
         auto& info = blocks[{ cx / BLOCK, cy / BLOCK }];
         ++info.cells;
         info.decor += decor ? 1 : 0;
-        info.water += land == LAND_WATER ? 1 : 0;
-        info.rock += land == LAND_ROCK ? 1 : 0;
+        info.water += IsWater(land) ? 1 : 0;
+        info.rock += IsRock(land) ? 1 : 0;
     }
 
     // Large open land areas without anything on them look unfinished.
